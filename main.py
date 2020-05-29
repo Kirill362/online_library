@@ -36,27 +36,27 @@ for page_id in range(1, 5):
     response = requests.get(fantasy_books_url, allow_redirects=False)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'lxml')
-    link_tags = soup.find_all("table", border="0")
+    link_tags = soup.select("table.d_book")
     for tag in link_tags:
-        url = tag.find("a")["href"]
+        url = tag.select_one("a")["href"]
         link = urljoin(fantasy_books_url, url)
         response = requests.get(link, allow_redirects=False)
         response.raise_for_status()
         if response.status_code == 200:
             book_information = {}
             soup = BeautifulSoup(response.text, 'lxml')
-            title_tag = soup.find('div', id='content').find('h1')
+            title_tag = soup.select_one('div h1')
             title, author = title_tag.text.split("   ::   ")
             title = sanitize_filename(title)
             book_information["title"] = title
             book_information["author"] = author
 
-            picture_tag = soup.find('div', class_="bookimage").find('a').find('img')['src']
+            picture_tag = soup.select_one('div.bookimage a img')['src']
             full_image_url = urljoin(link, picture_tag)
             book_information["img_src"] = full_image_url
 
             filename = full_image_url.split("/")[-1]
-            comment_tag = soup.find_all('div', class_='texts')
+            comment_tag = soup.select('div.texts')
             if comment_tag == []:
                 comments = ["Комментариев пока нет"]
             else:
@@ -65,7 +65,7 @@ for page_id in range(1, 5):
                     comments.append(comment.find('span').text)
             book_information["comments"] = comments
 
-            genre_tag = soup.find('span', class_='d_book').find_all('a')
+            genre_tag = soup.select('span.d_book a')
             for tag in genre_tag:
                 genres.append(tag.text)
             book_information["genres"] = genres
