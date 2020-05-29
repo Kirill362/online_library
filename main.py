@@ -3,58 +3,83 @@ from bs4 import BeautifulSoup
 import os
 from pathvalidate import sanitize_filename
 from urllib.parse import urljoin
+import json
+
 
 def download_txt(url, filename, folder='books/'):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
-    sanitized_filename = sanitize_filename(filename)
-    if response.status_code == 200:
-        with open("{}/{}.txt".format(folder, sanitized_filename), "w") as my_file:
-            my_file.write(response.text)
+    with open("{}/{}.txt".format(folder, filename), "w", encoding="utf-8") as my_file:
+        my_file.write(response.text)
     return os.path.join('folder', 'filename')
 
+
 def download_image(url, filename, folder='images/'):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
     with open("{}/{}".format(folder, filename), "wb") as my_file:
         my_file.write(response.content)
     return os.path.join('folder', 'filename')
 
+
 genres = []
-for book_id in range(1, 11):
-    site_url = 'http://tululu.org/b{}/'.format(book_id)
-    response = requests.get(site_url, allow_redirects=False)
+books_list = []
+
+if not os.path.exists("books/"):
+    os.makedirs("books/")
+
+if not os.path.exists('images/'):
+    os.makedirs('images/')
+
+for page_id in range(1, 5):
+    fantasy_books_url = "http://tululu.org/l55/{}/".format(page_id)
+    response = requests.get(fantasy_books_url, allow_redirects=False)
     response.raise_for_status()
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, 'lxml')
-        title_tag = soup.find('div', id='content').find('h1')
-        title_and_author = title_tag.text.split("   ::   ")
-        title = "{}. {}".format(book_id, title_and_author[0])
-        print(title)
-        author = title_and_author[1]
+    soup = BeautifulSoup(response.text, 'lxml')
+    link_tags = soup.find_all("table", border="0")
+    for tag in link_tags:
+        url = tag.find("a")["href"]
+        link = urljoin(fantasy_books_url, url)
+        response = requests.get(link, allow_redirects=False)
+        response.raise_for_status()
+        if response.status_code == 200:
+            book_information = {}
+            soup = BeautifulSoup(response.text, 'lxml')
+            title_tag = soup.find('div', id='content').find('h1')
+            title, author = title_tag.text.split("   ::   ")
+            title = sanitize_filename(title)
+            book_information["title"] = title
+            book_information["author"] = author
 
-        picture_tag = soup.find('div', class_="bookimage").find('a').find('img')['src']
-        full_image_url = urljoin(site_url, picture_tag)
-        filename = full_image_url.split("/")[-1]
-        comment_tag = soup.find_all('div', class_='texts')
-        #if comment_tag == []:
-            #print("Комментариев пока нет")
-        #else:
-            #for comment in comment_tag:
-                #print(comment.find('span').text)
+            picture_tag = soup.find('div', class_="bookimage").find('a').find('img')['src']
+            full_image_url = urljoin(link, picture_tag)
+            book_information["img_src"] = full_image_url
 
-        genre_tag = soup.find('span', class_='d_book').find_all('a')
-        for tag in genre_tag:
-            genres.append(tag.text)
-        print(genres)
-        genres = []
-    #download_image(full_image_url, filename)
-    #book_url = 'http://tululu.org/txt.php?id={}'.format(book_id)
-    #download_txt(book_url, title)
+            filename = full_image_url.split("/")[-1]
+            comment_tag = soup.find_all('div', class_='texts')
+            if comment_tag == []:
+                comments = ["Комментариев пока нет"]
+            else:
+                comments = []
+                for comment in comment_tag:
+                    comments.append(comment.find('span').text)
+            book_information["comments"] = comments
+
+            genre_tag = soup.find('span', class_='d_book').find_all('a')
+            for tag in genre_tag:
+                genres.append(tag.text)
+            book_information["genres"] = genres
+            genres = []
+            download_image(full_image_url, filename)
+            book_url = 'http://tululu.org/txt.php?id={}'.format(url[2:-1])
+            download_txt(book_url, title)
+            books_list.append(book_information)
+
+with open("books_info.json", "w") as my_file:
+  json.dump(books_list, my_file)
+
+
+
 
 
 
