@@ -4,7 +4,7 @@ import os
 from pathvalidate import sanitize_filename
 from urllib.parse import urljoin
 import json
-
+import argparse
 
 def download_txt(url, filename, folder='books/'):
     response = requests.get(url, allow_redirects=False)
@@ -22,6 +22,13 @@ def download_image(url, filename, folder='images/'):
     return os.path.join('folder', 'filename')
 
 
+parser = argparse.ArgumentParser(
+    description='Скачивание книг с определённых страниц'
+)
+parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=1, type=int)
+parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=702, type=int)
+args = parser.parse_args()
+
 genres = []
 books_list = []
 
@@ -31,7 +38,8 @@ if not os.path.exists("books/"):
 if not os.path.exists('images/'):
     os.makedirs('images/')
 
-for page_id in range(1, 5):
+
+for page_id in range(args.start_page, args.end_page):
     fantasy_books_url = "http://tululu.org/l55/{}/".format(page_id)
     response = requests.get(fantasy_books_url, allow_redirects=False)
     response.raise_for_status()
@@ -43,6 +51,7 @@ for page_id in range(1, 5):
         response = requests.get(link, allow_redirects=False)
         response.raise_for_status()
         if response.status_code == 200:
+            print(link)
             book_information = {}
             soup = BeautifulSoup(response.text, 'lxml')
             title_tag = soup.select_one('div h1')
