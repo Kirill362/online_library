@@ -7,6 +7,8 @@ import json
 import argparse
 
 def download_txt(url, filename, folder='books/'):
+    if not os.path.exists(folder):
+        os.makedirs(folder)
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
     with open("{}/{}.txt".format(folder, filename), "w", encoding="utf-8") as my_file:
@@ -15,6 +17,8 @@ def download_txt(url, filename, folder='books/'):
 
 
 def download_image(url, filename, folder='images/'):
+    if not os.path.exists(folder):
+        os.makedirs(folder)
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
     with open("{}/{}".format(folder, filename), "wb") as my_file:
@@ -27,16 +31,14 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=1, type=int)
 parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=702, type=int)
+parser.add_argument('--dest_folder', help='Путь к каталогу с результатами парсинга: картинкам, книгами, JSON', default='')
+parser.add_argument('--skip_imgs', help='Hе скачивать картинки', default=False, action='store_true')
+parser.add_argument('--skip_txt', help='Hе скачивать книги', default=False, action='store_true')
+parser.add_argument('--json_path', help='Указать свой путь к *.json файлу с результатами', default='')
 args = parser.parse_args()
 
 genres = []
 books_list = []
-
-if not os.path.exists("books/"):
-    os.makedirs("books/")
-
-if not os.path.exists('images/'):
-    os.makedirs('images/')
 
 
 for page_id in range(args.start_page, args.end_page):
@@ -51,7 +53,6 @@ for page_id in range(args.start_page, args.end_page):
         response = requests.get(link, allow_redirects=False)
         response.raise_for_status()
         if response.status_code == 200:
-            print(link)
             book_information = {}
             soup = BeautifulSoup(response.text, 'lxml')
             title_tag = soup.select_one('div h1')
@@ -79,13 +80,18 @@ for page_id in range(args.start_page, args.end_page):
                 genres.append(tag.text)
             book_information["genres"] = genres
             genres = []
-            download_image(full_image_url, filename)
+            if not args.skip_imgs:
+                download_image(full_image_url, filename, "{}images/".format(args.dest_folder))
             book_url = 'http://tululu.org/txt.php?id={}'.format(url[2:-1])
-            download_txt(book_url, title)
+            if not args.skip_txt:
+                download_txt(book_url, title, "{}books/".format(args.dest_folder))
             books_list.append(book_information)
 
-with open("books_info.json", "w") as my_file:
-  json.dump(books_list, my_file)
+if not os.path.exists("{}{}".format(args.dest_folder, args.json_path)):
+    os.makedirs("{}{}".format(args.dest_folder, args.json_path))
+
+with open("{}{}books_info.json".format(args.dest_folder, args.json_path), "w") as my_file:
+    json.dump(books_list, my_file)
 
 
 
