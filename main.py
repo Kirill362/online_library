@@ -38,7 +38,7 @@ if __name__ == '__main__':
 
     genres = []
     books_list = []
-    
+
     for page_id in range(args.start_page, args.end_page):
         fantasy_books_url = "http://tululu.org/l55/{}/".format(page_id)
         response = requests.get(fantasy_books_url, allow_redirects=False)
