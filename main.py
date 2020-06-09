@@ -7,8 +7,7 @@ import json
 import argparse
 
 def download_txt(url, filename, folder='books/'):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    os.makedirs(folder, exist_ok=True)
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
     with open("{}/{}.txt".format(folder, filename), "w", encoding="utf-8") as my_file:
@@ -17,8 +16,7 @@ def download_txt(url, filename, folder='books/'):
 
 
 def download_image(url, filename, folder='images/'):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    os.makedirs(folder, exist_ok=True)
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
     with open("{}/{}".format(folder, filename), "wb") as my_file:
@@ -26,9 +24,47 @@ def download_image(url, filename, folder='images/'):
     return os.path.join('folder', 'filename')
 
 
+def create_book_information(code, link):
+    soup = BeautifulSoup(code, 'lxml')
+    book_information = find_title_and_author(soup)
+    book_information["img_src"], book_information["comments"] = find_img_and_comments(soup, link)
+    book_information["genres"] = find_genres(soup)
+    return book_information
+
+
+def find_title_and_author(soup):
+    title_tag = soup.select_one('div h1')
+    title, author = title_tag.text.split("   ::   ")
+    title = sanitize_filename(title)
+    book_information = {"title": title,
+                        "author": author}
+    return book_information
+
+
+def find_img_and_comments(soup, link):
+    picture_tag = soup.select_one('div.bookimage a img')['src']
+    full_image_url = urljoin(link, picture_tag)
+
+    comment_tag = soup.select('div.texts')
+    if comment_tag == []:
+        comments = ["Комментариев пока нет"]
+    else:
+        comments = []
+        for comment in comment_tag:
+            comments.append(comment.find('span').text)
+    return full_image_url, comments
+
+
+def find_genres(soup):
+    genres =[]
+    genre_tag = soup.select('span.d_book a')
+    for tag in genre_tag:
+        genres.append(tag.text)
+    return genres
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Скачивание книг с определённых страниц')
-    parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=1, type=int)
+    parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=701, type=int)
     parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=702, type=int)
     parser.add_argument('--dest_folder', help='Путь к каталогу с результатами парсинга: картинкам, книгами, JSON', default='')
     parser.add_argument('--skip_imgs', help='Hе скачивать картинки', default=False, action='store_true')
@@ -51,49 +87,16 @@ if __name__ == '__main__':
             response = requests.get(link, allow_redirects=False)
             response.raise_for_status()
             if response.status_code == 200:
-                book_information = {}
-                soup = BeautifulSoup(response.text, 'lxml')
-                title_tag = soup.select_one('div h1')
-                title, author = title_tag.text.split("   ::   ")
-                title = sanitize_filename(title)
-                book_information["title"] = title
-                book_information["author"] = author
-
-                picture_tag = soup.select_one('div.bookimage a img')['src']
-                full_image_url = urljoin(link, picture_tag)
-                book_information["img_src"] = full_image_url
-
-                filename = full_image_url.split("/")[-1]
-                comment_tag = soup.select('div.texts')
-                if comment_tag == []:
-                    comments = ["Комментариев пока нет"]
-                else:
-                    comments = []
-                    for comment in comment_tag:
-                        comments.append(comment.find('span').text)
-                book_information["comments"] = comments
-
-                genre_tag = soup.select('span.d_book a')
-                for tag in genre_tag:
-                    genres.append(tag.text)
-                book_information["genres"] = genres
-                genres = []
+                book_information = create_book_information(response.text, link)
+                filename = book_information["img_src"].split("/")[-1]
                 if not args.skip_imgs:
-                    download_image(full_image_url, filename, "{}images/".format(args.dest_folder))
+                    download_image(book_information["img_src"], filename, "{}images/".format(args.dest_folder))
                 book_url = 'http://tululu.org/txt.php?id={}'.format(url[2:-1])
                 if not args.skip_txt:
-                    download_txt(book_url, title, "{}books/".format(args.dest_folder))
+                    download_txt(book_url, book_information["title"], "{}books/".format(args.dest_folder))
                 books_list.append(book_information)
 
-    if not os.path.exists("{}{}".format(args.dest_folder, args.json_path)):
-        os.makedirs("{}{}".format(args.dest_folder, args.json_path))
+    os.makedirs("{}{}".format(args.dest_folder, args.json_path), exist_ok=True)
 
     with open("{}{}books_info.json".format(args.dest_folder, args.json_path), "w") as my_file:
         json.dump(books_list, my_file)
-
-
-
-
-
-
-
