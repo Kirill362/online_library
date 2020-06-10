@@ -73,6 +73,11 @@ def find_last_page():
     return last_page
 
 
+def check_redirect(response):
+    if response.is_redirect:
+        raise requests.HTTPError(f"Найдена переадрессация {response.url}")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Скачивание книг с определённых страниц')
     parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=701, type=int)
@@ -96,15 +101,18 @@ if __name__ == '__main__':
             full_book_url = urljoin(fantasy_books_url, book_url)
             response = requests.get(full_book_url, allow_redirects=False)
             response.raise_for_status()
-            if response.status_code == 200:
-                book_information = create_book_information(response.text, full_book_url)
-                filename = book_information["img_src"].split("/")[-1]
-                if not args.skip_imgs:
-                    download_image(book_information["img_src"], filename, "{}images/".format(args.dest_folder))
-                download_book_url = 'http://tululu.org/txt.php?id={}'.format(book_url[2:-1])
-                if not args.skip_txt:
-                    download_txt(download_book_url, book_information["title"], "{}books/".format(args.dest_folder))
-                books_list.append(book_information)
+            try:
+                check_redirect(response)
+            except requests.exceptions.HTTPError as error:
+                continue
+            book_information = create_book_information(response.text, full_book_url)
+            filename = book_information["img_src"].split("/")[-1]
+            if not args.skip_imgs:
+                download_image(book_information["img_src"], filename, "{}images/".format(args.dest_folder))
+            download_book_url = 'http://tululu.org/txt.php?id={}'.format(book_url[2:-1])
+            if not args.skip_txt:
+                download_txt(download_book_url, book_information["title"], "{}books/".format(args.dest_folder))
+            books_list.append(book_information)
 
     os.makedirs("{}{}".format(args.dest_folder, args.json_path), exist_ok=True)
 
