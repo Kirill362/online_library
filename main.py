@@ -13,7 +13,11 @@ from urllib.parse import urljoin
 def download_file(url, path, text=True):
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
-    check_redirect(response)
+    try:
+        check_redirect(response)
+    except requests.exceptions.HTTPError as error:
+        logging.warning(f"Обнаружен редирект по ссылке {url}")
+        return
     if text:
         with open(path, "w", encoding="utf-8") as file:
             file.write(response.text)
@@ -73,7 +77,7 @@ def check_redirect(response):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Скачивание книг с определённых страниц')
     parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=1, type=int)
-    parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=check_redirect(), type=int)
+    parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=5, type=int)
     parser.add_argument('--dest_folder', help='Путь к каталогу с результатами парсинга: картинкам, книгами, JSON', default='./')
     parser.add_argument('--skip_imgs', help='Hе скачивать картинки', default=False, action='store_true')
     parser.add_argument('--skip_txt', help='Hе скачивать книги', default=False, action='store_true')
