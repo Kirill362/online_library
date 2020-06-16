@@ -8,24 +8,29 @@ import argparse
 import logging
 
 
-def download_file(url, path):
+def download_file(url, path, text=True):
     response = requests.get(url, allow_redirects=False)
     response.raise_for_status()
-    if 'images' in path:
-        with open(path, "wb") as my_file:
-            my_file.write(response.content)
-    elif 'books' in path:
-        with open(path, "w", encoding="utf-8") as my_file:
-            my_file.write(response.text)
+    try:
+        check_redirect(response)
+    except requests.exceptions.HTTPError as error:
+        logging.warning(f"Обнаружен редирект по ссылке {url}, файл пропущен")
+        return
+    if text:
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(response.text)
+    else:
+        with open(path, "wb") as file:
+            file.write(response.content)
 
 
 def create_book_information(code, link):
     soup = BeautifulSoup(code, 'lxml')
     book_information = find_title(soup)
-    book_information["author"] = find_author(soup)
-    book_information["img_src"] = find_img(soup, link)
-    book_information["comments"] = find_comments(soup)
-    book_information["genres"] = find_genres(soup)
+    book_information.update({"author": find_author(soup),
+                             "img_src": find_img(soup, link),
+                             "comments": [comment.find('span').text for comment in soup.select('div.texts')],
+                             "genres": [tag.text for tag in soup.select('span.d_book a')]})
     return book_information
 
 
@@ -48,20 +53,6 @@ def find_img(soup, link):
     return full_image_url
 
 
-def find_comments(soup):
-    comment_tags = soup.select('div.texts')
-    comments = []
-    if comment_tags != []:
-        comments = [comment.find('span').text for comment in comment_tags]
-    return comments
-
-
-def find_genres(soup):
-    genre_tags = soup.select('span.d_book a')
-    genres = [tag.text for tag in genre_tags]
-    return genres
-
-
 def find_last_page():
     url = "http://tululu.org/l55/"
     response = requests.get(url, allow_redirects=False)
@@ -70,7 +61,7 @@ def find_last_page():
         check_redirect(response)
     except requests.exceptions.HTTPError as error:
         logging.warning(f"Обнаружен редирект по ссылке {url}, за последнюю страницу взято стандартное значение (702)")
-        return 702
+        return
     soup = BeautifulSoup(response.text, 'lxml')
     last_page = int(soup.select("p.center a.npage")[-1].text) + 1
     return last_page
@@ -84,7 +75,7 @@ def check_redirect(response):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Скачивание книг с определённых страниц')
     parser.add_argument('--start_page', help='С какой страницы начать скачивание', default=1, type=int)
-    parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=find_last_page(), type=int)
+    parser.add_argument('--end_page', help='На какой странице закончить скачивание', default=5, type=int)
     parser.add_argument('--dest_folder', help='Путь к каталогу с результатами парсинга: картинкам, книгами, JSON', default='./')
     parser.add_argument('--skip_imgs', help='Hе скачивать картинки', default=False, action='store_true')
     parser.add_argument('--skip_txt', help='Hе скачивать книги', default=False, action='store_true')
@@ -92,16 +83,19 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     books_list = []
-    book_id = 0
 
     for page_id in range(args.start_page, args.end_page):
         fantasy_books_url = "http://tululu.org/l55/{}/".format(page_id)
         response = requests.get(fantasy_books_url, allow_redirects=False)
         response.raise_for_status()
+        try:
+            check_redirect(response)
+        except requests.exceptions.HTTPError as error:
+            logging.warning(f"Обнаружен редирект по ссылке {fantasy_books_url}, страница пропущена")
+            continue
         soup = BeautifulSoup(response.text, 'lxml')
         link_tags = soup.select("table.d_book")
         for tag in link_tags:
-            book_id += 1
             book_url = tag.select_one("a")["href"]
             full_book_url = urljoin(fantasy_books_url, book_url)
             response = requests.get(full_book_url, allow_redirects=False)
@@ -111,13 +105,15 @@ if __name__ == '__main__':
             except requests.exceptions.HTTPError as error:
                 logging.warning(f"Обнаружен редирект по ссылке {full_book_url}, книга пропущена")
                 continue
+            book_id = book_url[2:-1]
             book_information = create_book_information(response.text, full_book_url)
             if not args.skip_imgs:
-                filename = f"{book_id}. {book_information['img_src'].split('/')[-1]}"
+                img_id = book_information['img_src'].split('/')[-1]
+                filename = f"{book_id}. {img_id}"
                 folder = os.path.join(args.dest_folder, "images")
                 os.makedirs(folder, exist_ok=True)
                 path = os.path.join(folder, filename)
-                download_file(book_information["img_src"], path)
+                download_file(book_information["img_src"], path, False)
             download_book_url = 'http://tululu.org/txt.php?id={}'.format(book_url[2:-1])
             if not args.skip_txt:
                 filename = f"{book_id}. {book_information['title']}"
@@ -125,10 +121,11 @@ if __name__ == '__main__':
                 folder = os.path.join(args.dest_folder, "books")
                 os.makedirs(folder, exist_ok=True)
                 path = os.path.join(folder, f'{sanitized_filename}.txt')
+                book_information["book_path"] = path
                 download_file(download_book_url, path)
             books_list.append(book_information)
 
     os.makedirs("{}{}".format(args.dest_folder, args.json_path), exist_ok=True)
 
-    with open("{}{}books_info.json".format(args.dest_folder, args.json_path), "w") as my_file:
-        json.dump(books_list, my_file)
+    with open("{}{}books_info.json".format(args.dest_folder, args.json_path), "w") as file:
+        json.dump(books_list, file)
