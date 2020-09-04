@@ -112,20 +112,20 @@ if __name__ == '__main__':
                     book_id = book_url.split("/")[-2][1:]
                     book_card = create_book_information(response.text, full_book_url)
                     if not args.skip_imgs:
-                        img_id = book_card['img_src'].split('/')[-1]
-                        filename = f"{book_id}. {img_id}"
+                        img_filename = book_card['img_src'].split('/')[-1]
                         folder = os.path.join(args.dest_folder, "images")
                         os.makedirs(folder, exist_ok=True)
-                        path = os.path.join(folder, filename)
+                        path = os.path.join(folder, img_filename)
+                        book_card["img_path"] = img_filename
                         download_file(book_card["img_src"], path, False)
                     download_book_url = 'http://tululu.org/txt.php?id={}'.format(book_url[2:-1])
                     if not args.skip_txt:
-                        filename = f"{book_id}. {book_card['title']}"
+                        filename = f"{book_card['title']}.txt"
                         sanitized_filename = sanitize_filename(filename)
                         folder = os.path.join(args.dest_folder, "books")
                         os.makedirs(folder, exist_ok=True)
-                        path = os.path.join(folder, f'{sanitized_filename}.txt')
-                        book_card["book_path"] = path
+                        path = os.path.join(folder, sanitized_filename)
+                        book_card["book_path"] = sanitized_filename
                         download_file(download_book_url, path)
                     books_list.append(book_card)
                     break
